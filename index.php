@@ -15,19 +15,22 @@ class I{
     private $_mPacked;
 
     /** Коэффициенты границ яркости для строк */
-    const k1 = .1;
-    const k2 = .1;
+    const k1 = .05;
+    const k2 = .05;
     /** Коэффициенты границ яркости для слов */
     const k3 = .1;
     const k4 = .1;
     /** Коэффициент границ яркости для символов */
-    const k5 = .3;
+    const k5 = .1;
 
     /** Коэффициент отношения ширины символа к высоте для шрифта */
-    const FONT_KOEF = 0.5;
+    const FONT_KOEF = 0.1;
+    const k6 = 0.1;
 
-    const TOP_BLUR = 10;
-    const BOTTOM_BLUR = 6;
+    const TOP_BLUR = 4;
+//    const TOP_BLUR = 0;
+    const BOTTOM_BLUR = 2;
+//    const BOTTOM_BLUR = 0;
     const LEFT_BLUR = 0;
     const RIGHT_BLUR = 0;
 
@@ -49,67 +52,56 @@ class I{
     public function analyze(){
         //выделяем строки
         $edges = $this->getEdges();
-//        $this->drawEdges($edges);
+//        $this->drawEdges($edges); die;
         $lines = $this->getLines($edges); /** @var Imagick[] $lines */
 
         //выделяем слова
-//        $stacked = new Imagick();
         $line2words = [];
-        for($i = 0; $i < count($lines); ++$i){
-            $wordEdges = $this->getWordEdges($lines[$i], $edges[$i]);
-            $words = $this->getWords($wordEdges, $lines[$i]);
-            $line2words[] = $words;
-            break;
-//            $this->render($lines[$i]);
-//            $this->render($words[4]);
-//            $this->drawVerticalEdges($wordEdges, $lines[$i], false);
-//            $stacked->addimage($lines[$i]);
+        $wordEdges = [];
+
+        $fromLine = 15;
+        $toLine = 16;//count($lines);
+        set_time_limit(300);
+
+        for($i = $fromLine; $i < $toLine; ++$i){
+            $wordEdges[$i] = $this->getWordEdges($lines[$i], $edges[$i]);
+            $words = $this->getWords($wordEdges[$i], $lines[$i]);
+            $line2words[$i] = $words;
         }
 
-//        $this->render($line2words[0][4]);
-        $letterEdges = $this->getLetterEdges($line2words[0][4]);
-        $this->drawVerticalEdges($letterEdges, $line2words[0][4], true, true);
 
-//        $stacked->resetiterator();
-//        $result = $stacked->appendimages(true);
-//        $this->render($result);
+//        $this->render($line2words[0][4]);
+        $stacked = new Imagick();
+        for($j = $fromLine; $j < $toLine; ++$j){
+            for($i = 0; $i < count($line2words[$j]); ++$i){
+                $word = $line2words[$j][$i];
+
+                $letterEdges = $this->getLetterEdges($word);
+                $shifted = array_map(function($v) use($wordEdges, $i, $j) {
+                    return $v + $wordEdges[$j][$i]['left'];
+                }, $letterEdges);
+                $this->drawVerticalEdges($shifted, $lines[$j], false, true);
+//            $this->render($lines[$j]); die;
+            }
+            $stacked->addimage($lines[$j]);
+        }
+        
+        $stacked->resetiterator();
+        $result = $stacked->appendimages(true);
+        $this->render($result);
 //        $this->render();
 //        $this->drawEdges($edges, $result);
     }
 
+    /**
+     * Рассчёт границ символов
+     * @param Imagick $word
+     * @return array
+     */
     public function getLetterEdges(Imagick $word){
         $m = $this->_imageToMatrix($word);
-        $cols = Alg::getAv($m);
-
-        $word->setimagepage(0,0,0,0);
-        $d = self::FONT_KOEF * $word->getimageheight(); //средняя ширина символа
-
-        //первый набор границ - всё подряд
-        $edges0 = []; //границы
-        $i = 0;
-        $w = count($cols);
-        while($i < $w - 1){
-            $slice = array_slice($cols, $i + 1, $d, true);
-            $min = min($slice);
-            $i = array_search($min, $slice);
-            $edges0[] = $i;
-        }
-
-        ini_set('xdebug.var_display_max_children', -1);
-
-        //просеиваем границы
-        $totalAv = array_sum($cols) / $w;
-        $b = self::k5 * $totalAv; //граница яркости
-        $cols[-2] = $cols[-1] = $cols[$w] = $cols[$w + 1] = $cols[$w + 2] = 0;
-        $edges1 = [];
-        for($i = 0; $i < count($edges0); ++$i){
-            $edge = $edges0[$i];
-            if($cols[$edge] < $b && ($cols[$edge - 2] > $b || $cols[$edge + 2] > $b)){
-                $edges1[] = $edge;
-            }
-        }
-
-        return $edges1;
+        $edges = Alg::getLetterEdges($m, self::FONT_KOEF, self::k5, self::k6);
+        return $edges;
     }
 
     /**
@@ -144,6 +136,10 @@ class I{
         unset($copy);
 
         $edges = Alg::getWordEdges($m, self::k3, self::k4);
+        foreach($edges as &$edge){
+            $edge['left'] -= self::LEFT_BLUR;
+            $edge['right'] += self::RIGHT_BLUR;
+        }
         return $edges;
     }
 
@@ -208,6 +204,11 @@ class I{
         }, $s);
 
         $lines = Alg::getLines($s, self::k1, self::k2);
+
+        foreach($lines as &$line){
+            $line['top'] -= self::TOP_BLUR;
+            $line['bottom'] += self::BOTTOM_BLUR;
+        }
         return $lines;
     }
 
@@ -235,13 +236,13 @@ class I{
 
         $draw->setstrokecolor(new ImagickPixel('green'));
         foreach($edges as $one){
-            $level = $one['top'] - self::TOP_BLUR;
+            $level = $one['top'];
             $draw->line(0, $level, $this->_w, $level);
         }
 
         $draw->setstrokecolor(new ImagickPixel('red'));
         foreach($edges as $one){
-            $level = $one['bottom'] + self::BOTTOM_BLUR;
+            $level = $one['bottom'];
             $draw->line(0, $level, $this->_w, $level);
         }
 
@@ -268,13 +269,13 @@ class I{
             }
         }else{
             foreach($edges as $one){
-                $level = $one['left'] - self::LEFT_BLUR;
+                $level = $one['left'];
                 $draw->line($level, 0, $level, $height);
             }
 
             $draw->setstrokecolor(new ImagickPixel('red'));
             foreach($edges as $one){
-                $level = $one['right'] + self::RIGHT_BLUR;
+                $level = $one['right'];
                 $draw->line($level, 0, $level, $height);
             }
         }
