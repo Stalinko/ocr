@@ -92,6 +92,7 @@ abstract class Alg{
      * @param int $fontKoef
      * @param int $k5
      * @param int $k6
+     * @param $wordEdges
      * @return array
      */
     public static function getLetterEdges($m, $fontKoef, $k5, $k6){
@@ -100,7 +101,7 @@ abstract class Alg{
         $d = $fontKoef * $h; //средняя ширина символа
 
         //этап первый - грубый рассчёт всех границ
-        $edges0 = []; //границы - номера столбцов из исх матрицы
+        $edges0 = [0]; //границы - номера столбцов из исх матрицы
         $i = 0;
         $w = count($cols);
         while($i < $w - 1){
@@ -110,6 +111,8 @@ abstract class Alg{
             $edges0[] = $i;
         }
 
+        $edges0[] = $w - 1;
+
 //        return $edges0;
 
         //этап второй - просеиваем границы
@@ -117,13 +120,16 @@ abstract class Alg{
         $totalAv = array_sum($cols) / $w;
         $b = $k5 * $totalAv; //граница яркости
         $cols[-2] = $cols[-1] = $cols[$w] = $cols[$w + 1] = $cols[$w + 2] = 0;
+
+//        echo $b, ' ';
+//        var_dump($cols); die;
         foreach($edges0 as $edge){
             if($cols[$edge] < $b && ($cols[$edge - 2] > $b || $cols[$edge + 2] > $b)){
                 $edges1[] = $edge;
             }
         }
 
-        return $edges1;
+//        return $edges1;
         //этап третий
         $edges2 = [];
         $h1 = ceil(0.3 * $h); //30% высоты
@@ -186,26 +192,18 @@ abstract class Alg{
         return $edges2;
     }
 
+    /**
+     * Получить колонку из матрицы
+     * @param $m
+     * @param $n
+     * @return array
+     */
     private static function _matrixCol($m, $n){
-        $chunks = 1;
-        $ranges = [];
-        $h = count($m);
-        for($i = 1; $i <= $chunks; ++$i){
-            $border = (int)ceil($h / $chunks * $i);
-            $ranges[$border] = $n - round($chunks / 2) + $i;
-        }
-
         $r = [];
-        for($i = 0; $i < $h; ++$i){
-            foreach($ranges as $border => $index){
-                if($i < $border){
-                    break;
-                }
-            }
-//            echo $index, ' ';
-            $r[] = isset($row[$index]) ? $row[$index] : 0;
+        for($i = 0; $i < count($m); ++$i){
+            $row = $m[$i];
+            $r[] = isset($row[$n]) ? $row[$n] : 0;
         }
-//        die;
 
         return $r;
     }
@@ -227,26 +225,11 @@ abstract class Alg{
      * @return array
      */
     public static function getAv($m, $byCols = true){
-        $chunks = 2;
-        $ranges = [];
-        $h = count($m);
-        for($i = 1; $i <= $chunks; ++$i){
-            $border = (int)ceil($h / $chunks * $i);
-            $ranges[$border] = -round($chunks / 2) + $i - 1;
-        }
-
         $cols = [];
         for($i = 0; $i < count($m[0]); ++$i){
             $sum = 0;
             for($j = 0; $j < count($m); ++$j){
-                $offset = 0;
-                foreach($ranges as $border => $offset){
-                    if($j < $border){
-                        break;
-                    }
-                }
-                $index = $i + $offset;
-                $sum += isset($m[$j][$index]) ? $m[$j][$index] : 1;
+                $sum += isset($m[$j][$i]) ? $m[$j][$i] : 1;
             }
             $cols[] = 1 - $sum / count($m);
         }

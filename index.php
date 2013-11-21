@@ -2,6 +2,7 @@
 
 error_reporting(E_ALL);
 ini_set('display_errors', true);
+ini_set('xdebug.var_display_max_children', -1);
 require 'algs.php';
 
 class I{
@@ -24,15 +25,15 @@ class I{
     const k5 = .1;
 
     /** Коэффициент отношения ширины символа к высоте для шрифта */
-    const FONT_KOEF = 0.1;
-    const k6 = 0.1;
+    const FONT_KOEF = 0.6;
+    const k6 = 0.15;
 
     const TOP_BLUR = 4;
 //    const TOP_BLUR = 0;
     const BOTTOM_BLUR = 2;
 //    const BOTTOM_BLUR = 0;
-    const LEFT_BLUR = 0;
-    const RIGHT_BLUR = 0;
+    const LEFT_BLUR = 1;
+    const RIGHT_BLUR = 1;
 
     /**
      * @param $path
@@ -59,8 +60,8 @@ class I{
         $line2words = [];
         $wordEdges = [];
 
-        $fromLine = 15;
-        $toLine = 16;//count($lines);
+        $fromLine = 0;
+        $toLine = 10; //count($lines);
         set_time_limit(300);
 
         for($i = $fromLine; $i < $toLine; ++$i){
@@ -69,28 +70,127 @@ class I{
             $line2words[$i] = $words;
         }
 
-
-//        $this->render($line2words[0][4]);
-        $stacked = new Imagick();
+//        $stacked = new Imagick();
         for($j = $fromLine; $j < $toLine; ++$j){
             for($i = 0; $i < count($line2words[$j]); ++$i){
                 $word = $line2words[$j][$i];
 
                 $letterEdges = $this->getLetterEdges($word);
-                $shifted = array_map(function($v) use($wordEdges, $i, $j) {
-                    return $v + $wordEdges[$j][$i]['left'];
-                }, $letterEdges);
-                $this->drawVerticalEdges($shifted, $lines[$j], false, true);
-//            $this->render($lines[$j]); die;
+//                $shifted = array_map(function($v) use($wordEdges, $i, $j) {
+//                    return $v + $wordEdges[$j][$i]['left'];
+//                }, $letterEdges);
+//                $this->drawVerticalEdges($shifted, $lines[$j], false, true);
+                $this->_saveLetters($word, $letterEdges);
             }
-            $stacked->addimage($lines[$j]);
+//            $stacked->addimage($lines[$j]);
         }
+        echo 'ok';
         
-        $stacked->resetiterator();
-        $result = $stacked->appendimages(true);
-        $this->render($result);
+//        $stacked->resetiterator();
+//        $result = $stacked->appendimages(true);
+//        $this->render($result);
 //        $this->render();
 //        $this->drawEdges($edges, $result);
+    }
+
+    private $_fileN = 0;
+    private function _saveLetters(Imagick $word, $edges){
+        $word->setimagepage(0,0,0,0);
+        $h = $word->getimageheight();
+
+        $first = false;
+        $start = $edges[0];
+        foreach($edges as $edge){
+            if(!$first){
+                $first = true;
+                continue;
+            }
+            $letter = $word->getimageregion($edge - $start, $h, $start, 0);
+            $letter->setImageFormat('png');
+            ++$this->_fileN;
+            $letter->writeimage('letters/' . $this->_fileN . '.jpg');
+            $start = $edge;
+        }
+    }
+
+    public function checkLetters(){
+        $base = [];
+        foreach(scandir('base') as $img){
+            if($img == '.' || $img == '..'){
+                continue;
+            }
+
+            $im = new Imagick('base/' . $img);
+            $base[] = $im; //$this->_imageToMatrix($im);
+        }
+
+        $result = [];
+
+        $baseH = $base[0]->getimageheight();
+        $baseW = $base[0]->getimagewidth();
+        foreach(scandir('letters') as $img){
+            if($img == '.' || $img == '..'){
+                continue;
+            }
+
+            $im = new Imagick('letters/' . $img);
+            $letter = $this->_imageToMatrix($im);
+
+//            $result[$img] = $this->_compareLetters($base[0], $letter);
+            $h = max($baseH, $im->getimageheight());
+            $w = max($baseW, $im->getimagewidth());
+
+            $im->scaleimage($w, $h);
+            $baseIm = clone $base[0];
+            $baseIm->scaleimage($w, $h);
+
+            $result[$img] = $im->compareimages($baseIm, Imagick::METRIC_MEANSQUAREERROR)[1];
+        }
+        arsort($result);
+        var_dump($result);
+    }
+
+    private function _compareLetters($one, $two){
+        $h1 = count($one);
+        $w1 = count($one[0]);
+        $h2 = count($two);
+        $w2 = count($two[0]);
+
+        $h = max($h1, $h2);
+        $w = max($w1, $w2);
+
+        $kh = min($h1, $h2) / $h;
+        $kw = min($w1, $w2) / $w;
+
+        $sum = 0;
+        for($i = 0; $i < $h; ++$i){
+            for($j = 0; $j < $w; ++$j){
+                $x1 = $j;
+                $x2 = (int)floor($kw * $j);
+                if($w1 < $w2){
+                    $x = $x1;
+                    $x1 = $x2;
+                    $x2 = $x;
+                }
+
+                $y1 = $i;
+                $y2 = (int)floor($kh * $i);
+                if($h1 < $h2){
+                    $y = $y1;
+                    $y1 = $y2;
+                    $y2 = $y;
+                }
+
+                if(!isset($one[$y1][$x1]) || !isset($two[$y2][$x2])){
+                    var_dump($w1, $h1, $w2, $h2, $x1, $y1, $x2, $y2, $kw, $kh); die;
+                }
+                if($one[$y1][$x1] == $two[$y2][$x2]){
+                    ++$sum;
+                }
+            }
+        }
+
+        return round($sum / $w / $h * 100);
     }
 
     /**
@@ -355,4 +455,5 @@ class I{
 }
 
 $i = new I('p0011-sel.png');
-$i->analyze();
+//$i->analyze();
+$i->checkLetters();
