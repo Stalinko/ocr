@@ -106,6 +106,7 @@ class I{
                 continue;
             }
             $letter = $word->getimageregion($edge - $start, $h, $start, 0);
+            $letter->trimimage(0);
             $letter->setImageFormat('png');
             ++$this->_fileN;
             $letter->writeimage('letters/' . $this->_fileN . '.jpg');
@@ -115,39 +116,53 @@ class I{
 
     public function checkLetters(){
         $base = [];
+
+        $baseW = 0;
+        $baseH = 0;
         foreach(scandir('base') as $img){
             if($img == '.' || $img == '..'){
                 continue;
             }
 
             $im = new Imagick('base/' . $img);
-            $base[] = $im; //$this->_imageToMatrix($im);
+            $base[$img] = $im; //$this->_imageToMatrix($im);
+            $baseW = max($baseW, $im->getimagewidth());
+            $baseH = max($baseH, $im->getimageheight());
+        }
+
+        foreach($base as $file => &$im){ /** @var Imagick $im */
+            $im->scaleimage($baseW, $baseH);
         }
 
         $result = [];
-
-        $baseH = $base[0]->getimageheight();
-        $baseW = $base[0]->getimagewidth();
         foreach(scandir('letters') as $img){
             if($img == '.' || $img == '..'){
                 continue;
             }
 
             $im = new Imagick('letters/' . $img);
-            $letter = $this->_imageToMatrix($im);
+            $im->scaleimage($baseW, $baseH);
 
-//            $result[$img] = $this->_compareLetters($base[0], $letter);
-            $h = max($baseH, $im->getimageheight());
-            $w = max($baseW, $im->getimagewidth());
+            $maxK = 0;
+            foreach($base as $file => $baseIm){
+                $k = $im->compareimages($baseIm, Imagick::METRIC_MEANSQUAREERROR)[1];
 
-            $im->scaleimage($w, $h);
-            $baseIm = clone $base[0];
-            $baseIm->scaleimage($w, $h);
+//                if($k > $maxK){
+//                    $result[$img] = $file;
+//                }
+                $result[] = $k;
+            }
 
-            $result[$img] = $im->compareimages($baseIm, Imagick::METRIC_MEANSQUAREERROR)[1];
+            var_dump($k, $result); die;
         }
-        arsort($result);
-        var_dump($result);
+//        asort($result);
+
+        echo '<style>img { border: 1px solid gray; }</style>';
+        echo '<table>';
+        foreach($result as $img => $file){
+            echo "<tr><td><img src=\"letters/$img\"><img src=\"base/$file\"></td></tr>";
+        }
+        echo '</table>';
     }
 
     private function _compareLetters($one, $two){
